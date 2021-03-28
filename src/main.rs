@@ -2,7 +2,6 @@
 extern crate log;
 use structopt::StructOpt;
 use hex_dump::{CommandLine, dump};
-use std::io::Error;
 
 fn main() {
     env_logger::init();

@@ -2,7 +2,7 @@
 extern crate log;
 
 use structopt::StructOpt;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, BufWriter, Write};
 use std::fs::File;
 
 #[derive(Debug, StructOpt)]
@@ -16,27 +16,28 @@ pub struct CommandLine {
 }
 
 pub fn dump(cli: CommandLine) -> std::io::Result<()>{
-    let _output = cli.input.join(".dump");
+    let output = cli.input.join(".dump");
 
-    let mut file = File::open(cli.input)?;
-    let mut reader = BufReader::new(file);
+    let file_input = File::open(cli.input)?;
+    let file_output = File::create(output)?;
+    let mut reader = BufReader::new(file_input);
+    let mut writer = BufWriter::new(file_output);
+
     let mut buffer = [0u8; 32];
 
     loop{
         match reader.read(&mut buffer[..]) {
             Ok(bytes_read) if bytes_read > 0 => {
                 info!("READ: {}", String::from_utf8(Vec::from(&buffer[0..bytes_read])).unwrap());
+                writer.write(&buffer[0..bytes_read])?;
             }
             Err(err) => {
-                error!("{}", err);
-                break;
+                return Err(err);
             }
             _ => {
                 info!("EOF");
-                break;
+                return Ok(());
             }
         }
     }
-
-    Ok(())
 }
