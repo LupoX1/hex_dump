@@ -17,6 +17,12 @@ pub struct CommandLine {
     columns : usize,
 }
 
+impl CommandLine{
+    pub fn valid(&self) -> bool{
+        [8usize,16usize,32usize,64usize].contains(&self.columns)
+    }
+}
+
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 #[derive(Debug, Clone)]
@@ -26,7 +32,7 @@ struct IoError{
 
 impl Display for IoError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "IoError: {}", self.message)
+        write!(f, "{}", self.message)
     }
 }
 
