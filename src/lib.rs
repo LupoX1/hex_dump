@@ -7,6 +7,7 @@ use std::fs::File;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use ascii_utils::Check;
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name="hex_dump", about="Creates a file dump in hex and ascii format")]
@@ -40,6 +41,7 @@ impl Display for IoError {
 impl Error for IoError{}
 
 pub fn dump(cli: CommandLine) -> Result<()> {
+
     let mut output = cli.input.clone();
     output.set_extension("dump");
 
@@ -47,6 +49,11 @@ pub fn dump(cli: CommandLine) -> Result<()> {
         let message = format!("{} : {:?}", e, &cli.input);
         Box::new(IoError { message })
     })?;
+
+    let bar = ProgressBar::new(file_input.metadata().unwrap().len() as u64);
+    bar.set_style(ProgressStyle::default_bar()
+        .template("[{eta_precise}] {bar:40.cyan/blue} {bytes:>7}/{total_bytes:7} {msg}")
+        .progress_chars("##-"));
 
     let mut reader = BufReader::new(file_input);
 
@@ -67,6 +74,7 @@ pub fn dump(cli: CommandLine) -> Result<()> {
         match reader.read(&mut buffer){
             Ok(bytes_read) if bytes_read == 0 => {
                 info!("EOF");
+                bar.finish_and_clear();
                 return Ok(());
             }
             Ok(bytes_read) => {
@@ -77,8 +85,10 @@ pub fn dump(cli: CommandLine) -> Result<()> {
                 let row = data_row(address, slice, cli.columns);
                 address += bytes_read as u32;
                 write!(writer, "{}", row)?;
+                bar.inc(bytes_read as u64);
             }
             Err(e) => {
+                bar.abandon();
                 let message = format!("{} : {:?}", e, cli.input);
                 return Err(Box::new(IoError { message }));
             }
