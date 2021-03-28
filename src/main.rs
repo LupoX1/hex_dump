@@ -1,11 +1,25 @@
-use log::info;
+#[macro_use]
+extern crate log;
 use structopt::StructOpt;
-use hex_dump::Cli;
+use hex_dump::{CommandLine, dump};
+use std::io::Error;
 
 fn main() {
     env_logger::init();
 
-    let opt = Cli::from_args();
+    info!("Starting Dump");
 
-    info!("{:?}", opt);
+    let opt = CommandLine::from_args();
+
+    let code = match dump(opt){
+        Ok(_) => {0}
+        Err(error) => {
+            error!("{}", error);
+            1
+        }
+    };
+
+    info!("End Dump");
+
+    std::process::exit(code);
 }
