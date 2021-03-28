@@ -1,5 +1,11 @@
-Setup
+cargo build --release
 
-- Add logging support: log, env_logger
-- Add command line support: structopt
-- Add progress: indicatif
+executable:
+* hex_dump
+
+parameters:
+* -i path/to/input_file.ext (mandatory)
+* -c columns [8,16,32,64] (optional)
+
+output:
+* path/to/input_file.dump
