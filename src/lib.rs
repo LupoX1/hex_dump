@@ -8,7 +8,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, StructOpt)]
-#[structopt(name="hex_dump", about="Creates a file dump in hex and ascii format")]
+#[structopt(name="hex_dump", about="Creates a file dump in hex perché and ascii format")]
 pub struct CommandLine {
     #[structopt(short="i", long="input")]
     input : std::path::PathBuf,
@@ -58,7 +58,7 @@ pub fn dump(cli: CommandLine) -> Result<()> {
 
     let mut buffer: Vec<u8> = Vec::new();
     buffer.resize(cli.columns, 0);
-    //let mut buffer:[u8;16] = [0; 16];
+
     let mut address = 0;
     loop {
         match reader.read(&mut buffer){
@@ -68,12 +68,11 @@ pub fn dump(cli: CommandLine) -> Result<()> {
             }
             Ok(bytes_read) => {
                 if address % (16 * cli.columns as u32) == 0 {
-                    write!(writer, "{}", locations_header(cli.columns))?;
+                    write!(writer, "\n{}", locations_header(cli.columns))?;
                 }
                 let slice = &buffer[0..bytes_read];
                 let row = data_row(address, slice, cli.columns);
                 address += bytes_read as u32;
-                info!("Read {} Row: {}", bytes_read, row);
                 write!(writer, "{}", row)?;
             }
             Err(e) => {
@@ -84,20 +83,23 @@ pub fn dump(cli: CommandLine) -> Result<()> {
     }
 }
 
-
-fn gen_block(data: &[u8], fun : fn(&u8) -> String, columns: usize, sep: &str) -> Vec<String> {
+fn gen_block(data: &[u8], fun : fn(&u8) -> String, columns: usize, sep: &str, filler: &str) -> Vec<String> {
     let mut blocks : Vec<String> = Vec::new();
 
     for block in 0 .. columns / 8 {
-        let start = block * 8;
-        let end = start + 8;
-        let data = &data[start..end];
-        let result = data.into_iter().map(fun).collect::<Vec<_>>();
+        let start = usize::min(data.len(), block * 8);
+        let end = usize::min(data.len(), start + 8);
+
+        let data: &[u8] = &data[start..end];
+
+        let mut result = data.into_iter().map(fun).collect::<Vec<_>>();
+        while result.len() < 8 {
+            result.push(String::from(filler));
+        }
 
         let result = result.join(sep);
 
         blocks.push(result);
-
     }
 
     blocks
@@ -106,20 +108,29 @@ fn gen_block(data: &[u8], fun : fn(&u8) -> String, columns: usize, sep: &str) ->
 fn locations_header(columns: usize) -> String {
 
     let data: Vec<u8> = (0..columns as u8).collect();
-    let blocks = gen_block(&data, byte_to_hex, columns, " ");
+    let blocks = gen_block(&data, byte_to_hex, columns, " ", "..");
     let blocks = blocks.join("  ");
 
-    format!("{0:10}  {1}  {0:text_size$}\n", " ", blocks, text_size = columns).to_lowercase()
+    format!("{0:10}  {1}  {0:text_size$}\n", " ", blocks, text_size = columns).to_lowercase();
+
+    let address = format!("{:10}", " ");
+    let text = format!("{:size$}", " ", size=columns);
+
+    create_row(&address, &blocks, &text).to_lowercase()
 }
 
 fn data_row(address: u32, data: &[u8], columns : usize) -> String {
     let address = address_to_hex(address);
-    let blocks = gen_block(data, byte_to_hex, columns, " ");
+    let blocks = gen_block(data, byte_to_hex, columns, " ", "..");
     let blocks = blocks.join("  ");
-    let texts = gen_block(data, byte_to_string, columns, "");
+    let texts = gen_block(data, byte_to_string, columns, "", ".");
     let texts = texts.join(" ");
 
-    format!("{}  {}  {}\n", address, blocks, texts)
+    create_row(&address, &blocks, &texts)
+}
+
+fn create_row(address: &str, data: &str, text: &str) -> String {
+    format!("{}  {}  {}\n", address, data, text)
 }
 
 fn byte_to_string(byte: &u8) -> String {
@@ -149,12 +160,16 @@ mod tests{
 
     #[test]
     fn test_byte_to_char() {
+        init();
+
         assert_eq!(".", byte_to_string(&0u8));
         assert_eq!("A", byte_to_string(&65u8));
     }
 
     #[test]
     fn test_byte_to_hex() {
+        init();
+
         assert_eq!("00", byte_to_hex(&0u8));
         assert_eq!("0F", byte_to_hex(&15u8));
         assert_eq!("10", byte_to_hex(&16u8));
@@ -162,6 +177,8 @@ mod tests{
 
     #[test]
     fn test_address_to_hex() {
+        init();
+
         assert_eq!("0x00000000", address_to_hex(0));
         assert_eq!("0x00000010", address_to_hex( 16));
         assert_eq!("0x000000ff", address_to_hex(255));
@@ -171,31 +188,47 @@ mod tests{
     #[test]
     fn test_header_8() {
         init();
+
         assert_eq!("            00 01 02 03 04 05 06 07          \n", locations_header(8));
     }
 
     #[test]
     fn test_header_16() {
+        init();
+
         assert_eq!("            00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f                  \n", locations_header(16));
     }
 
     #[test]
     fn test_header_32() {
+        init();
+
         assert_eq!("            00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f                                  \n", locations_header(32));
     }
 
     #[test]
     fn test_row() {
+        init();
+
         let data: [u8; 16] = [48+0,48+1,48+2,48+3,48+4,48+5,48+6,48+7,48+8,48+9,55+10,55+11,55+12,55+13,55+14,55+15];
         assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 43 44 45 46  01234567 89ABCDEF\n", data_row(3735928559, &data, 16));
     }
 
     #[test]
     fn test_short_row() {
+        init();
+
         let data: [u8; 4] = [48+0,48+1,48+2,48+3];
-        assert_eq!("0xdeadbeef  30 31 32 33 .. .. .. ..  .. .. .. .. .. .. .. ..  01234.... ........\n", data_row(3735928559, &data, 16));
+        assert_eq!("0xdeadbeef  30 31 32 33 .. .. .. ..  .. .. .. .. .. .. .. ..  0123.... ........\n", data_row(3735928559, &data, 16));
 
         let data: [u8; 12] = [48+0,48+1,48+2,48+3,48+4,48+5,48+6,48+7,48+8,48+9,55+10,55+11];
         assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 .. .. .. ..  01234567 89AB....\n", data_row(3735928559, &data, 16));
+    }
+
+    #[test]
+    fn test_create_row() {
+        init();
+
+        assert_eq!("address  data  text\n", create_row("address", "data", "text"));
     }
 }
