@@ -71,7 +71,7 @@ pub fn dump(cli: CommandLine) -> Result<()> {
                     write!(writer, "{}", locations_header(cli.columns))?;
                 }
                 let slice = &buffer[0..bytes_read];
-                let row = data_row(address, slice);
+                let row = data_row(address, slice, cli.columns);
                 address += bytes_read as u32;
                 info!("Read {} Row: {}", bytes_read, row);
                 write!(writer, "{}", row)?;
@@ -85,46 +85,57 @@ pub fn dump(cli: CommandLine) -> Result<()> {
 }
 
 fn locations_header(columns: usize) -> String {
-    let sep = columns as u8 / 2;
 
-    let locations_low = (0..sep as u8).map(|i| byte_to_hex(i)).collect::<Vec<_>>().join(" ");
-    let locations_high = (sep..16 as u8).map(|i| byte_to_hex(i)).collect::<Vec<_>>().join(" ");
+    let mut blocks : Vec<String> = Vec::new();
 
-    format!("            {}  {}                   \n", locations_low, locations_high).to_lowercase()
+    for block in 0 .. columns / 8 {
+        let start = block as u8 * 8;
+        let end = start + 8;
+        let locations: String = (start..end).map(|n| byte_to_hex(n)).collect::<Vec<String>>().join(" ").to_lowercase();
+        blocks.push(locations);
+    }
+
+    let blocks = blocks.join("  ");
+
+    format!("{0:10}  {1}  {0:text_size$}\n", " ", blocks, text_size = columns).to_lowercase()
 }
 
-fn data_row(address: u32, data: &[u8]) -> String {
+fn data_row(address: u32, data: &[u8], columns : usize) -> String {
     let address = address_to_hex(address);
 
-    let sep = data.len()  / 2;
-    let low = &data[0..sep];
-    let high = &data[sep..data.len()];
+    let mut blocks : Vec<String> = Vec::new();
 
-    let locations_low = low.into_iter().map(|b|byte_to_hex(*b)).collect::<Vec<_>>().join(" ");
-    let locations_high = high.into_iter().map(|b|byte_to_hex(*b)).collect::<Vec<_>>().join(" ");
+    for block in 0 .. columns / 8 {
+        let start = block * 8;
+        let end = start + 8;
+        let data = &data[start..end];
+        let result = data.into_iter().map(|n| byte_to_hex(*n)).collect::<Vec<_>>().join(" ").to_lowercase();
+        blocks.push(result);
+    }
 
-    let text_low = low.into_iter().map(|i|{
-        let c = char::from(*i);
-        if c.is_alphanumeric() {
-            *i
-        }else{
-            b'.'
-        }
-    }).collect::<Vec<_>>();
+    let blocks = blocks.join("  ");
 
-    let text_high = high.into_iter().map(|i|{
-        let c = char::from(*i);
-        if c.is_alphanumeric() {
-            *i
-        }else{
-            b'.'
-        }
-    }).collect::<Vec<_>>();
+    let mut texts: Vec<String> = Vec::new();
+    for block in 0 .. columns / 8 {
+        let start = block * 8;
+        let end = start + 8;
+        let data = &data[start..end];
+        let result = data.into_iter().map(|n| byte_to_char(*n)).collect::<Vec<_>>();
+        texts.push(String::from_utf8(result).unwrap());
+    }
 
-    let text_low = String::from_utf8(text_low).unwrap();
-    let text_high = String::from_utf8(text_high).unwrap();
+    let texts = texts.join(" ");
 
-    format!("{}  {}  {}  {} {}\n", address, locations_low, locations_high, text_low, text_high)
+    format!("{}  {}  {}\n", address, blocks, texts)
+}
+
+fn byte_to_char(byte: u8) -> u8 {
+    let c = char::from(byte);
+    if c.is_alphanumeric() {
+        byte
+    }else{
+        b'.'
+    }
 }
 
 fn byte_to_hex(byte: u8) -> String {
@@ -155,13 +166,32 @@ mod tests{
     }
 
     #[test]
-    fn test_header() {
-        assert_eq!("            00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f                   \n", locations_header(16));
+    fn test_header_8() {
+        assert_eq!("            00 01 02 03 04 05 06 07          \n", locations_header(8));
+    }
+
+    #[test]
+    fn test_header_16() {
+        assert_eq!("            00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f                  \n", locations_header(16));
+    }
+
+    #[test]
+    fn test_header_32() {
+        assert_eq!("            00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f                                  \n", locations_header(32));
     }
 
     #[test]
     fn test_row() {
         let data: [u8; 16] = [48+0,48+1,48+2,48+3,48+4,48+5,48+6,48+7,48+8,48+9,55+10,55+11,55+12,55+13,55+14,55+15];
-        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 43 44 45 46  01234567 89ABCDEF\n", data_row(3735928559, &data));
+        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 43 44 45 46  01234567 89ABCDEF\n", data_row(3735928559, &data, 16));
+    }
+
+    #[test]
+    fn test_short_row() {
+        let data: [u8; 4] = [48+0,48+1,48+2,48+3];
+        assert_eq!("0xdeadbeef  30 31 32 33 .. .. .. ..  .. .. .. .. .. .. .. ..  01234.... ........\n", data_row(3735928559, &data, 16));
+
+        let data: [u8; 12] = [48+0,48+1,48+2,48+3,48+4,48+5,48+6,48+7,48+8,48+9,55+10,55+11];
+        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 .. .. .. ..  01234567 89AB....\n", data_row(3735928559, &data, 16));
     }
 }
