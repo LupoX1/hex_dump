@@ -6,9 +6,10 @@ use std::io::{BufReader, Read, BufWriter, Write};
 use std::fs::File;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use ascii_utils::Check;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name="hex_dump", about="Creates a file dump in hex perché and ascii format")]
+#[structopt(name="hex_dump", about="Creates a file dump in hex and ascii format")]
 pub struct CommandLine {
     #[structopt(short="i", long="input")]
     input : std::path::PathBuf,
@@ -59,6 +60,8 @@ pub fn dump(cli: CommandLine) -> Result<()> {
     let mut buffer: Vec<u8> = Vec::new();
     buffer.resize(cli.columns, 0);
 
+    write!(writer, "{}", locations_header(cli.columns))?;
+
     let mut address = 0;
     loop {
         match reader.read(&mut buffer){
@@ -68,7 +71,7 @@ pub fn dump(cli: CommandLine) -> Result<()> {
             }
             Ok(bytes_read) => {
                 if address % (16 * cli.columns as u32) == 0 {
-                    write!(writer, "\n{}", locations_header(cli.columns))?;
+                    write!(writer, "\n")?;
                 }
                 let slice = &buffer[0..bytes_read];
                 let row = data_row(address, slice, cli.columns);
@@ -124,7 +127,7 @@ fn data_row(address: u32, data: &[u8], columns : usize) -> String {
     let blocks = gen_block(data, byte_to_hex, columns, " ", "..");
     let blocks = blocks.join("  ");
     let texts = gen_block(data, byte_to_string, columns, "", ".");
-    let texts = texts.join(" ");
+    let texts = texts.join("");
 
     create_row(&address, &blocks, &texts)
 }
@@ -135,7 +138,7 @@ fn create_row(address: &str, data: &str, text: &str) -> String {
 
 fn byte_to_string(byte: &u8) -> String {
     let c = char::from(*byte);
-    if c.is_alphanumeric() {
+    if c.is_printable() {
         String::from(c)
     }else{
         String::from('.')
@@ -211,7 +214,7 @@ mod tests{
         init();
 
         let data: [u8; 16] = [48+0,48+1,48+2,48+3,48+4,48+5,48+6,48+7,48+8,48+9,55+10,55+11,55+12,55+13,55+14,55+15];
-        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 43 44 45 46  01234567 89ABCDEF\n", data_row(3735928559, &data, 16));
+        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 43 44 45 46  0123456789ABCDEF\n", data_row(3735928559, &data, 16));
     }
 
     #[test]
@@ -219,10 +222,10 @@ mod tests{
         init();
 
         let data: [u8; 4] = [48+0,48+1,48+2,48+3];
-        assert_eq!("0xdeadbeef  30 31 32 33 .. .. .. ..  .. .. .. .. .. .. .. ..  0123.... ........\n", data_row(3735928559, &data, 16));
+        assert_eq!("0xdeadbeef  30 31 32 33 .. .. .. ..  .. .. .. .. .. .. .. ..  0123............\n", data_row(3735928559, &data, 16));
 
         let data: [u8; 12] = [48+0,48+1,48+2,48+3,48+4,48+5,48+6,48+7,48+8,48+9,55+10,55+11];
-        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 .. .. .. ..  01234567 89AB....\n", data_row(3735928559, &data, 16));
+        assert_eq!("0xdeadbeef  30 31 32 33 34 35 36 37  38 39 41 42 .. .. .. ..  0123456789AB....\n", data_row(3735928559, &data, 16));
     }
 
     #[test]
