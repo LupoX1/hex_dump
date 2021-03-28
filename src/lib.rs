@@ -6,7 +6,6 @@ use std::io::{BufReader, Read, BufWriter, Write};
 use std::fs::File;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::convert::TryFrom;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name="hex_dump", about="Creates a file dump in hex and ascii format")]
@@ -34,10 +33,11 @@ impl Display for IoError {
 impl Error for IoError{}
 
 pub fn dump(cli: CommandLine) -> Result<()> {
-    let output = cli.input.join(".dump");
+    let mut output = cli.input.clone();
+    output.set_extension("dump");
 
     let file_input = File::open(&cli.input).map_err(|e| {
-        let message = format!("{} : {:?}", e, cli.input);
+        let message = format!("{} : {:?}", e, &cli.input);
         Box::new(IoError { message })
     })?;
 
