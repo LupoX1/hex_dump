@@ -84,17 +84,29 @@ pub fn dump(cli: CommandLine) -> Result<()> {
     }
 }
 
-fn locations_header(columns: usize) -> String {
 
+fn gen_block(data: &[u8], fun : fn(&u8) -> String, columns: usize, sep: &str) -> Vec<String> {
     let mut blocks : Vec<String> = Vec::new();
 
     for block in 0 .. columns / 8 {
-        let start = block as u8 * 8;
+        let start = block * 8;
         let end = start + 8;
-        let locations: String = (start..end).map(|n| byte_to_hex(n)).collect::<Vec<String>>().join(" ").to_lowercase();
-        blocks.push(locations);
+        let data = &data[start..end];
+        let result = data.into_iter().map(fun).collect::<Vec<_>>();
+
+        let result = result.join(sep);
+
+        blocks.push(result);
+
     }
 
+    blocks
+}
+
+fn locations_header(columns: usize) -> String {
+
+    let data: Vec<u8> = (0..columns as u8).collect();
+    let blocks = gen_block(&data, byte_to_hex, columns, " ");
     let blocks = blocks.join("  ");
 
     format!("{0:10}  {1}  {0:text_size$}\n", " ", blocks, text_size = columns).to_lowercase()
@@ -102,43 +114,24 @@ fn locations_header(columns: usize) -> String {
 
 fn data_row(address: u32, data: &[u8], columns : usize) -> String {
     let address = address_to_hex(address);
-
-    let mut blocks : Vec<String> = Vec::new();
-
-    for block in 0 .. columns / 8 {
-        let start = block * 8;
-        let end = start + 8;
-        let data = &data[start..end];
-        let result = data.into_iter().map(|n| byte_to_hex(*n)).collect::<Vec<_>>().join(" ").to_lowercase();
-        blocks.push(result);
-    }
-
+    let blocks = gen_block(data, byte_to_hex, columns, " ");
     let blocks = blocks.join("  ");
-
-    let mut texts: Vec<String> = Vec::new();
-    for block in 0 .. columns / 8 {
-        let start = block * 8;
-        let end = start + 8;
-        let data = &data[start..end];
-        let result = data.into_iter().map(|n| byte_to_char(*n)).collect::<Vec<_>>();
-        texts.push(String::from_utf8(result).unwrap());
-    }
-
+    let texts = gen_block(data, byte_to_string, columns, "");
     let texts = texts.join(" ");
 
     format!("{}  {}  {}\n", address, blocks, texts)
 }
 
-fn byte_to_char(byte: u8) -> u8 {
-    let c = char::from(byte);
+fn byte_to_string(byte: &u8) -> String {
+    let c = char::from(*byte);
     if c.is_alphanumeric() {
-        byte
+        String::from(c)
     }else{
-        b'.'
+        String::from('.')
     }
 }
 
-fn byte_to_hex(byte: u8) -> String {
+fn byte_to_hex(byte: &u8) -> String {
     format!("{:02X}", byte)
 }
 
@@ -150,11 +143,21 @@ fn address_to_hex(address: u32) -> String {
 mod tests{
     use super::*;
 
+    fn init() {
+        let _ = env_logger::builder().is_test(true).try_init();
+    }
+
+    #[test]
+    fn test_byte_to_char() {
+        assert_eq!(".", byte_to_string(&0u8));
+        assert_eq!("A", byte_to_string(&65u8));
+    }
+
     #[test]
     fn test_byte_to_hex() {
-        assert_eq!("00", byte_to_hex(0u8));
-        assert_eq!("0F", byte_to_hex(15u8));
-        assert_eq!("10", byte_to_hex(16u8));
+        assert_eq!("00", byte_to_hex(&0u8));
+        assert_eq!("0F", byte_to_hex(&15u8));
+        assert_eq!("10", byte_to_hex(&16u8));
     }
 
     #[test]
@@ -167,6 +170,7 @@ mod tests{
 
     #[test]
     fn test_header_8() {
+        init();
         assert_eq!("            00 01 02 03 04 05 06 07          \n", locations_header(8));
     }
 
