@@ -47,7 +47,7 @@ pub fn dump(cli: CommandLine) -> Result<()> {
         Box::new(IoError { message })
     })?;
 
-    let reader = BufReader::new(file_input);
+    let mut reader = BufReader::new(file_input);
 
     let file_output =  File::create(&output).map_err(|e| {
         let message = format!("{} : {:?}", e, output);
@@ -56,11 +56,25 @@ pub fn dump(cli: CommandLine) -> Result<()> {
 
     let mut writer = BufWriter::new(file_output);
 
-    for byte in reader.bytes() {
-        match byte {
-            Ok(byte) => {
-                info!("Read {} = {}", byte, char::from(byte));
-                write!(writer, "{}", byte)?;
+    let mut buffer: Vec<u8> = Vec::new();
+    buffer.resize(cli.columns, 0);
+    //let mut buffer:[u8;16] = [0; 16];
+    let mut address = 0;
+    loop {
+        match reader.read(&mut buffer){
+            Ok(bytes_read) if bytes_read == 0 => {
+                info!("EOF");
+                return Ok(());
+            }
+            Ok(bytes_read) => {
+                if address % (16 * cli.columns as u32) == 0 {
+                    write!(writer, "{}", locations_header(cli.columns))?;
+                }
+                let slice = &buffer[0..bytes_read];
+                let row = data_row(address, slice);
+                address += bytes_read as u32;
+                info!("Read {} Row: {}", bytes_read, row);
+                write!(writer, "{}", row)?;
             }
             Err(e) => {
                 let message = format!("{} : {:?}", e, cli.input);
@@ -68,8 +82,6 @@ pub fn dump(cli: CommandLine) -> Result<()> {
             }
         }
     }
-
-    Ok(())
 }
 
 fn locations_header(columns: usize) -> String {
